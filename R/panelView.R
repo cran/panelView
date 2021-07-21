@@ -16,8 +16,9 @@ panelView <- function(data, # a data frame (long-form)
                       index, # c(unit, time) indicators
                       na.rm = TRUE, # remove missing values
                       ignore.treat = FALSE,
-                      outcome.type = "continuous", # continuous or discrete
                       type = "treat", ## treat or outcome
+                      outcome.type = "continuous", # continuous or discrete
+                      treat.type = NULL, # discrete or continuous
                       by.group = FALSE, # (color pre-treatment treated differently)
                       by.timing = FALSE,
                       theme.bw = FALSE,
@@ -40,6 +41,8 @@ panelView <- function(data, # a data frame (long-form)
                       cex.main = 15,
                       cex.main.sub = 12,
                       cex.axis = 8,
+                      cex.axis.x = NULL,
+                      cex.axis.y = NULL,
                       cex.lab = 12, 
                       cex.legend = 12,
                       background = NULL # background color
@@ -49,8 +52,7 @@ panelView <- function(data, # a data frame (long-form)
     ## parse variable.           ##
     ## ------------------------- ##
     if (is.data.frame(data) == FALSE || length(class(data)) > 1) {
-        data <- as.data.frame(data)
-        warning("Not a data frame.")
+        data <- as.data.frame(data)        
     }
 
 
@@ -120,7 +122,7 @@ panelView <- function(data, # a data frame (long-form)
     }
  
     ##-------------------------------##
-    ## Checking Ohter Parameters
+    ## Checking Other Parameters
     ##-------------------------------## 
 
     if (!type %in% c("missing", "raw", "treat", "outcome")) {
@@ -136,6 +138,14 @@ panelView <- function(data, # a data frame (long-form)
     if (by.group == TRUE || type == "outcome") {
         cex.main.top <- cex.main
         cex.main <- cex.main.sub
+    }
+
+    if (is.null(cex.axis.x)==TRUE) {
+        cex.axis.x <- cex.axis
+    }
+
+    if (is.null(cex.axis.y)==TRUE) {
+        cex.axis.y <- cex.axis
     }
 
 
@@ -171,8 +181,10 @@ panelView <- function(data, # a data frame (long-form)
     }
 
     ## check treatment indicator
-    d.level <- NULL
+    d.levels <- NULL
     d.bi <- FALSE
+
+    # without ignore.treat:
     if (ignore.treat == 0) {
 
         if (!(class(data[, D]) %in% c("numeric", "integer"))) {
@@ -180,21 +192,45 @@ panelView <- function(data, # a data frame (long-form)
             stop("Treatment indicator should be a numeric value.")
         }
 
-        d.level <- sort(unique(data[, D]))
-        d.bi <- d.level[1] == 0 & d.level[2] == 1 & length(d.level) == 2
+        d.levels <- sort(unique(data[, D]))
+        n.levels <- length(d.levels)
+        d.bi <- d.levels[1] == 0 & d.levels[2] == 1 & n.levels == 2 # d.bi: binary treatment
 
-        if (length(d.level) == 1) {
+        if (n.levels == 1) {
             warning("Only one treatment level...\n")
             ignore.treat <- 1
         } else {
             if (d.bi == FALSE) {
-                cat("More than 2 treatment levels.\n")
+                cat(paste0(n.levels, " treatment levels.\n"))
+            }
+        }
+
+        if (is.null(treat.type)== FALSE) {
+            if (!treat.type %in% c("discrete","continuous")) {
+                stop("\"treat.type\" must be \"discrete\" or \"continuous\"")
+            }
+            if (treat.type == "discrete" & n.levels>10) {
+                warning("Too many treatment levels; treat as continuous.")
+                treat.type <- "continuous"
+            }
+            if (treat.type == "continuous" & n.levels<=4) {
+                cat("Too few treatment levels; consider setting treat.type = \"discrete\".")                
+            }
+        } else {
+            if (n.levels>10) {
+                treat.type <- "continuous"
+            } else {
+                treat.type <- "discrete"
             }
         }
 
         ## if (!(1%in%data[, D] & 0%in%data[, D] & length(unique(data[,D])) == 2)) {
         ##     stop(paste("variable \"", D, "\" should contain only 0 and 1.\n"))
         ## }
+    }
+    else{
+        n.levels <- 0
+        treat.type <- "discrete"
     }
 
     ## shade in the post-treatment period
@@ -370,7 +406,7 @@ panelView <- function(data, # a data frame (long-form)
 
     ########################################
     ## unified labels:
-    ##  -2 for missing
+    ##  -200 for missing
     ##  -1 for control condition (or observed)
     ##   0 for treated pre
     ##   1 for treated post  
@@ -378,7 +414,7 @@ panelView <- function(data, # a data frame (long-form)
     
     obs.missing <- NULL
     
-    if (ignore.treat == 0 && d.bi == 1) {
+    if (ignore.treat == 0 && d.bi == 1) { #  binary, and without ignore.treat 
         
         con1 <- type == "treat" && pre.post == TRUE
         con2 <- type == "outcome" && by.group == FALSE
@@ -407,7 +443,7 @@ panelView <- function(data, # a data frame (long-form)
             ## 2. add treated units
             obs.missing[, id.tr] <- D[, id.tr]
             ## 3. set missing values
-            obs.missing[which(I==0)] <- -2 ## missing -2
+            obs.missing[which(I==0)] <- -200 ## missing -200
 
             unit.type <- rep(1, N) ## 1 for control; 2 for treated; 3 for reversal
             unit.type[id.tr] <- 2
@@ -435,7 +471,7 @@ panelView <- function(data, # a data frame (long-form)
             ## 2. set controls
             obs.missing[which(D.old == 0)] <- -1 ## under control
             ## 3. set missing 
-            obs.missing[which(I==0)] <- -2 ## missing
+            obs.missing[which(I==0)] <- -200 ## missing
         }
         
         obs.missing.treat <- obs.missing
@@ -443,19 +479,17 @@ panelView <- function(data, # a data frame (long-form)
             obs.missing[which(obs.missing > 1)] <- 1
         }
 
-    } else {
+    } else { # either not binary (>2 treatment levels) or ignore.treat == 1
 
-        if (length(d.level) > 0 && type == "treat") { ## >2 treatment levels
-            
+        if (n.levels > 0 && type == "treat") { ## >2 treatment levels
             obs.missing <- D
             obs.missing[which(I == 0)] <- NA
 
-        } else {
+        } else { ## ignore.treat == 1
 
             obs.missing <- matrix(-1, TT, N) ## observed 
-            obs.missing[which(I==0)] <- -2 ## missing
+            obs.missing[which(I==0)] <- -200 ## missing
             ignore.treat <- 1
-
         }
 
     }
@@ -654,7 +688,7 @@ panelView <- function(data, # a data frame (long-form)
                 }
             } else {
                 if (length(color) != 1) {
-                   stop("Length of \"raw.color\" should be equal to 1.\n") 
+                   stop("Length of \"color\" should be equal to 1.\n") 
                 }
             }
         }
@@ -1320,38 +1354,29 @@ panelView <- function(data, # a data frame (long-form)
         
         if (d.bi == FALSE && ignore.treat == 0) { ## >2 treatment level
 
-            tr.col <- c("#FAFAD2", "#ADFF2F", "#87CEFA", "#1874CD", "#00008B")
-            if (length(d.level) <= 5) {
-                for (i in 1:length(d.level)) {
-                    breaks <- c(breaks, d.level[i])
-                    label <- c(label, paste("Treatment level: ", d.level[i], sep = ""))
+            tr.col <- c("#66C2A5","#FC8D62","#8DA0CB","#E78AC3","#A6D854","#FFD92F","#E5C494",
+                "#FAFAD2", "#ADFF2F", "#87CEFA", "#1874CD", "#00008B")
+
+            if (treat.type == "discrete") {
+                for (i in 1:n.levels) {
+                    breaks <- c(breaks, d.levels[i])
+                    label <- c(label, paste("Treatment level: ", d.levels[i], sep = ""))
                 }
-                if (length(d.level) == 2) {
-                    col <- tr.col[c(1,5)]
-                } 
-                else if (length(d.level) == 3) {
-                    col <- tr.col[c(1,3,5)]
-                }
-                else if (length(d.level) == 4) {
-                    col <- tr.col[2:5]
-                }
-                else {
-                    col <- tr.col
-                }
+                col <- tr.col[1:n.levels]                
 
             } else {
                 cat("Continuous treatment.\n")
                 col <- c("#87CEEB", "#00008B")
                 label <- "Treatment Levels"
             }
+            # # missing values
+            # if (-200 %in% all) {
+            #     col <- c(col,"#FFFFFF")
+            #     breaks <- c(breaks, -200)
+            #     label <- c(label,"Missing")
+            # }
 
         } else { ## binary treatment indicator
-
-            if (-2 %in% all) {
-                col <- c(col,"#FFFFFF")
-                breaks <- c(breaks, -2)
-                label <- c(label,"Missing")
-            }
 
             if (0 %in% all) { ## have pre and post: general DID type data
                 
@@ -1374,7 +1399,7 @@ panelView <- function(data, # a data frame (long-form)
                     label <- c(label,"Treated (Post)")
                 }
 
-            } else { 
+            } else { # do not have pre and post
 
                 ## control
                 if (-1 %in% all) {
@@ -1403,6 +1428,13 @@ panelView <- function(data, # a data frame (long-form)
                     ## }
                 }
 
+            }
+
+            # missing values
+            if (-200 %in% all) {
+                col <- c(col,"#FFFFFF")
+                breaks <- c(breaks, -200)
+                label <- c(label,"Missing")
             }
             
             ## adjust DID: treated units on top
@@ -1449,18 +1481,18 @@ panelView <- function(data, # a data frame (long-form)
 
         }
 
-        ## use-defined color setting and legend
+        ## user-defined color setting and legend
         if (!is.null(color)) {
-            if (length(d.level) <= 5) { ## discrete treatment indicator
+            if (treat.type == "discrete") { ## discrete treatment indicator
                 if (length(col) == length(color)) {
                     cat(paste("Specified colors in the order of: ", paste(label, collapse = ", "), ".\n", sep = ""))
                     col <- color
                 } else {
-                    stop(paste("Length of \"color\" shold be equal to ",length(col),".\n", sep=""))
+                    stop(paste("Length of \"color\" should be equal to ",length(col),".\n", sep=""))
                 }
             } else {
                 if (length(color) != 2) {
-                    stop(paste("Length of \"color\" shold be equal to ",length(col),".\n", sep=""))
+                    stop(paste("Length of \"color\" should be equal to ",length(col),".\n", sep=""))
                 } else {
                     col <- color
                 }
@@ -1469,7 +1501,7 @@ panelView <- function(data, # a data frame (long-form)
         }       
         
         if (!is.null(legend.labs)) {
-            if (length(d.level) <= 5) { ## discrete treatment indicator
+            if (treat.type == "discrete") { ## discrete treatment indicator
                 if (length(legend.labs) != length(label)) {
                     warning("Incorrect number of labels in the legends. Using default.\n")
                 } else {
@@ -1484,16 +1516,16 @@ panelView <- function(data, # a data frame (long-form)
                 }
             }
         } 
-         
+
         ## start plot 
         res <- c(m)
         data <- cbind.data.frame(units=units, period=period, res=res)
-        ## if (length(d.level) <= 5) {
+        ## if (treat.type == "discrete") {
         ##     data[,"res"] <- as.factor(data[,"res"])
         ## } else {
             data <- na.omit(data)
-        ## }
-        if (length(d.level) <= 5) {
+        # }
+        if (treat.type == "discrete") { 
             data[,"res"] <- as.factor(data[,"res"])
         }
         
@@ -1529,7 +1561,7 @@ panelView <- function(data, # a data frame (long-form)
   
         p <- p + labs(x = xlab, y = ylab, title=main) + theme_bw() 
 
-        if (length(d.level) <= 5) {
+        if (treat.type == "discrete") {
             p <- p + scale_fill_manual(NA, breaks = breaks, values = col, labels=label)
         } else {
             p <- p + scale_fill_gradient(low = col[1], high = col[2]) + guides(fill=guide_legend(title= label))
@@ -1545,8 +1577,8 @@ panelView <- function(data, # a data frame (long-form)
               axis.title.x = element_text(margin = margin(t = 8, r = 0, b = 0, l = 0)),
               axis.title.y = element_text(margin = margin(t = 0, r = 8, b = 0, l = 0)),
               axis.text = element_text(color="black", size=cex.axis),
-              axis.text.x = element_text(size = cex.axis, angle = angle, hjust=x.h, vjust=x.v),
-              axis.text.y = element_text(size = cex.axis),
+              axis.text.x = element_text(size = cex.axis.x, angle = angle, hjust=x.h, vjust=x.v),
+              axis.text.y = element_text(size = cex.axis.y),
               plot.background = element_rect(fill = background.color),
               legend.background = element_rect(fill = legend.color),
               legend.position = legend.pos,
@@ -1555,7 +1587,7 @@ panelView <- function(data, # a data frame (long-form)
               plot.title = element_text(size=cex.main, hjust = 0.5,face="bold",margin = margin(8, 0, 8, 0)))
                       
 
-        if (length(d.level) <= 5) {
+        if (treat.type == "discrete") {
             p <- p + theme(legend.title=element_blank())
         }
 
