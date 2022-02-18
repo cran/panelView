@@ -2,16 +2,22 @@
 \alias{panelView-package}
 \docType{package}
 \title{Panel Data Visualizations}
-\description{Visualizes panel data with (dichotomous) treatments}
+\description{Visualizes panel data}
 
 \details{
-  panelView has two main functionalities: (1) it visualizes the treatment and missing-value statuses of each observation in a panel/time-series-cross-sectional (TSCS) dataset; and (2) it plots the outcome variable (either continuous or discrete) in a time-series fashion.
+  panelView has three main functionalities:
 
-  For more details, see \url{https://yiqingxu.org/packages/panelView/panelView.html}.
+(1) it plots treatment status and missing data in a panel dataset;
+
+(2) it plots an outcome variable (either continuous or discrete) in a time-series fashion;
+
+(3) it visualizes the bivariate relationships between an outcome variable and a treatment variable by unit or in aggregate.
 }
 
 \author{
-  Licheng Liu <liulch.16@sem.tsinghua.edu.cn>, Tsinghua University  
+  Hongyu Mou <hongyumou5@gmail.com>, Peking Univeristy
 
-  Yiqing Xu <yiqingxu@ucsd.edu>, University of California, San Diego
+  Licheng Liu <liulch@mit.edu>, Massachusetts Institute of Technology
+
+  Yiqing Xu <yiqingxu@stanford.edu>, Stanford University
 }
