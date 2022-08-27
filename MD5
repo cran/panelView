@@ -1,11 +1,11 @@
-362dd36f53dccb45b228878c5e79aa6f *DESCRIPTION
+e6b44aa2adce526896736fbf9be74261 *DESCRIPTION
 4c051c0d3d3983e041f5d112cd785b4b *LICENSE
-5c03c80ced2850cd493f1ad3864a4287 *NAMESPACE
-69397f42f70c5d2f00f95d5a9c37b966 *R/panelView.R
+d7b190ccc730ce1aeb7bbbf97a09ca3e *NAMESPACE
+4f2100b252bf759a4f73ce12594c1ff1 *R/panelView.R
 747c7cda1e39fe74c3a7a1425bd8252d *R/zzz.r
 8e861285a49a4e13d170a2143da64d62 *data/panelView.RData
 ba4455d1344c9222d183a283a2b74766 *man/capacity.Rd
-d8e1ecc1fe728879697803defd6564bc *man/panelView-package.Rd
-e7268e2e5e5c8e84eaf103d78e760fcc *man/panelview.Rd
+ab9898348145c5d3cfce7fc2fd4a7d7a *man/panelView-package.Rd
+5d9e27b93e720547048b20ef01c39047 *man/panelView.Rd
 673772f1420e47d1c157f088587a0135 *man/simdata.Rd
 1be2774397487e61fd20ab5065fdab70 *man/turnout.Rd
