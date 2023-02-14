@@ -12,10 +12,11 @@ panelview <- function(data, # a data frame (long-form)
                       X = NULL,
                       index, # c(unit, time) indicators
                       ignore.treat = FALSE,
-                      type = "treat", ## treat, miss(ing), outcome, or bivar(iate)
+                      type = "treat", ## treat, miss(ing), outcome, or bivar(iate), fraction
                       outcome.type = "continuous", # continuous or discrete
                       treat.type = NULL, # discrete or continuous
                       by.group = FALSE, # (color pre-treatment treated differently)
+                      by.group.side = FALSE,
                       by.timing = FALSE,
                       theme.bw = TRUE,
                       xlim = NULL, 
@@ -26,13 +27,14 @@ panelview <- function(data, # a data frame (long-form)
                       legendOff = FALSE,
                       legend.labs = NULL,
                       main = NULL,
-                      pre.post = FALSE, # only used for treat plot, different with Stata
+                      pre.post = NULL, # only used for treat & outcome plots
                       id = NULL,
                       show.id = NULL,
                       color = NULL,
                       axis.adjust = FALSE,
                       axis.lab = "both",
                       axis.lab.gap = c(0, 0),
+                      axis.lab.angle = NULL,
                       shade.post = TRUE,
                       cex.main = 15,
                       cex.main.sub = 12,
@@ -46,9 +48,10 @@ panelview <- function(data, # a data frame (long-form)
                       by.unit = FALSE,
                       lwd = 0.2,
                       leave.gap = FALSE,
-                      by.group.side = FALSE,
-                      display.all = FALSE,
-                      by.cohort = FALSE
+                      display.all = NULL,
+                      by.cohort = FALSE,
+                      collapse.history = NULL,
+                      report.missing = FALSE
                     ) {
         
     ## ------------------------- ##
@@ -70,6 +73,96 @@ panelview <- function(data, # a data frame (long-form)
         }
     }
 
+
+
+
+    ## number of units
+    N0 <- length(unique(data[, index[1]]))
+    if (N0 <= 500) {        
+        if (is.null(collapse.history)) {
+            collapse.history <- FALSE
+        } 
+        if (is.null(display.all)) {
+            display.all <- FALSE
+        }
+    } else { # more than 300 units
+        if (!is.null(collapse.history)) {
+            if (is.null(display.all)) {
+                display.all <- FALSE
+            }            
+        } else { # collapse.history not specified
+            if (is.null(display.all)) { # display.all not specified
+                collapse.history <- TRUE
+                display.all <- FALSE
+            } else { # display.all specified
+                collapse.history <- FALSE
+            }
+        }
+    }
+    
+
+    ## remove missing values
+    if (is.logical(leave.gap) == FALSE & !leave.gap%in%c(0, 1)) {
+        stop("\"leave.gap\" is not a logical flag.")
+    } 
+
+    if (is.logical(by.cohort) == FALSE & !by.cohort%in%c(0, 1)) {
+        stop("\"by.cohort\" is not a logical flag.")
+    } 
+
+    if (is.logical(display.all) == FALSE & !display.all%in%c(0, 1)) {
+        stop("\"display.all\" is not a logical flag.")
+    }
+
+    if (is.logical(by.group.side) == FALSE & !by.group.side%in%c(0, 1)) {
+        stop("\"by.group.side\" is not a logical flag.")
+    }
+
+    if (is.logical(by.unit) == FALSE & !by.unit%in%c(0, 1)) {
+        stop("\"by.unit\" is not a logical flag.")
+    }
+
+    if (is.logical(axis.adjust) == FALSE & !axis.adjust%in%c(0, 1)) {
+        stop("\"axis.adjust\" is not a logical flag.")
+    }
+
+    if (is.null(axis.lab.angle) == FALSE) {
+        if (is.numeric(axis.lab.angle) == FALSE) {
+            stop("\"axis.lab.angle\" must be numeric.")
+        } else if (axis.lab.angle < 0 | axis.lab.angle > 90) {
+            stop("\"axis.lab.angle\" needs to be in [0, 90].")
+        } 
+    }
+    
+    # pre.post
+    if (is.null(pre.post) == TRUE) {
+        if (type == "outcome") {
+            pre.post <- TRUE
+        } else  {
+            pre.post <- FALSE
+        }
+    }
+    if (is.logical(pre.post) == FALSE & !pre.post%in%c(0, 1)) {
+        stop("\"pre.post\" is not a logical flag.")
+    }    
+
+    if (is.logical(theme.bw) == FALSE & !theme.bw%in%c(0, 1)) {
+        stop("\"theme.bw\" is not a logical flag.")
+    }
+
+    if (is.logical(by.timing) == FALSE & !by.timing%in%c(0, 1)) {
+        stop("\"by.timing\" is not a logical flag.")
+    }
+
+    if (is.logical(by.group) == FALSE & !by.group%in%c(0, 1)) {
+        stop("\"by.group\" is not a logical flag.")
+    }
+
+    if (is.logical(ignore.treat) == FALSE & !ignore.treat%in%c(0, 1)) {
+        stop("\"ignore.treat\" is not a logical flag.")
+    }
+
+
     if (by.group.side == TRUE) {
         if (by.group == FALSE) {
             by.group <- TRUE
@@ -88,7 +181,6 @@ panelview <- function(data, # a data frame (long-form)
     }
 
             
-
     if (!is.null(formula)) { # with formula
 
         if (formula[[1]] != "~") { # no "Y/D/X = var" or "var1 ~ var2"
@@ -100,66 +192,67 @@ panelview <- function(data, # a data frame (long-form)
         Y <- formula[[2]] # left hand side of the formula
 
         if (is.numeric(Y) == FALSE) { # Y is a variable
-        ## outcome
-        Y <- varnames[1]
-        ## treatment indicator and covariates
-        if (length(varnames) == 1) { ## only y
-            D <- X <- NULL
-            ignore.treat <- 1
+            ## outcome
+            Y <- varnames[1]
+            ## treatment indicator and covariates
+            if (length(varnames) == 1) { ## only y
+                D <- X <- NULL
+                ignore.treat <- 1
 
-            if (type == "treat") { # Y ~ 1, type(treat)
-                message("\"type = treat\" not allowed. Plot \"type = missing\" instead.\n")
-                type <- "missing"
+                if (type == "treat") { # Y ~ 1, type(treat)
+                    message("\"type = treat\" not allowed. Plot \"type = missing\" instead.\n")
+                    type <- "missing"
+                }
+            } else if (length(varnames) == 2) {
+                if (ignore.treat == 0) {
+                    D <- varnames[2]
+                    X <- NULL
+                } else {
+                    D <- NULL
+                    X <- varnames[2]
+                }   
+            } else { # length(varnames) > 2
+                if (ignore.treat == 0) {
+                    D <- varnames[2]
+                    X <- varnames[3:length(varnames)]
+                } else {
+                    D <- NULL
+                    X <- varnames[2:length(varnames)]
+                }
             }
-        } else if (length(varnames) == 2) {
-            if (ignore.treat == 0) {
-                D <- varnames[2]
-                X <- NULL
-            } else {
-                D <- NULL
-                X <- varnames[2]
-            }   
-        } else { # length(varnames) > 2
-            if (ignore.treat == 0) {
-                D <- varnames[2]
-                X <- varnames[3:length(varnames)]
-            } else {
-                D <- NULL
-                X <- varnames[2:length(varnames)]
-            }
-        }
         }
         else if (is.numeric(Y) == TRUE) { # Y is a number
-         ## outcome
-        Y <- NULL
-        ## treatment indicator and covariates
-        if (length(varnames) == 1) { # 1 ~ D/X
-            if (ignore.treat == 0) { # 1 ~ D
-                D <- varnames[1]
-                X <- NULL
-            } else { # 1 ~ X
-                stop("formula form not allowed")
-            }
-            # 1 ~ variable, type(miss): not allowed
-            if (type == "missing" | type == "miss") {
-                stop("formula form not allowed")
-            }
-        } else if (length(varnames) == 2) { ## 1 ~ D + X
-            if (ignore.treat == 0) { # 1 ~ D + X
-                D <- varnames[1]
-                X <- varnames[2]
-            } else { # 1 ~ X
-                stop("formula form not allowed")
-            }   
-        } else { # length(varnames) > 2
-            if (ignore.treat == 0) {
-                D <- varnames[1]
-                X <- varnames[2:length(varnames)]
-            } else {
-                stop("formula form not allowed")
+            ## outcome
+            Y <- NULL
+            ## treatment indicator and covariates
+            if (length(varnames) == 1) { # 1 ~ D/X
+                if (ignore.treat == 0) { # 1 ~ D
+                    D <- varnames[1]
+                    X <- NULL
+                } else { # 1 ~ X
+                    stop("formula form not allowed")
+                }
+                # 1 ~ variable, type(miss): not allowed
+                if (type == "missing" | type == "miss") {
+                    stop("formula form not allowed")
+                }
+            } else if (length(varnames) == 2) { ## 1 ~ D + X
+                if (ignore.treat == 0) { # 1 ~ D + X
+                    D <- varnames[1]
+                    X <- varnames[2]
+                } else { # 1 ~ X
+                    stop("formula form not allowed")
+                }   
+            } else { # length(varnames) > 2
+                if (ignore.treat == 0) {
+                    D <- varnames[1]
+                    X <- varnames[2:length(varnames)]
+                } else {
+                    stop("formula form not allowed")
+                }
             }
         }
-        }
+    
     } else { # no formula
         varnames <- c(Y, D, X)
         if (is.null(D)==TRUE & is.null(X)==TRUE) { # Y="Y", set type = "miss" as default
@@ -191,6 +284,28 @@ panelview <- function(data, # a data frame (long-form)
     ## exclude other covariates 
     data <- data[,c(index, Y, D, X)] 
 
+    varV <- nv <- NULL
+    if (report.missing == TRUE) {
+        ## report missings
+        varV <- c(Y, D, X)
+        nv <- length(varV)
+
+        ## a nv*2 matrix 
+        mis <- matrix(NA, nv, 2)
+        for (i in 1:nv) {
+            mis[i, 1] <- sum(is.na(data[, varV[i]]))
+        }
+        mis[, 2] <- round(mis[, 1] / dim(data)[1] * 100, 1) 
+
+        rownames(mis) <- varV
+        colnames(mis) <- c("# Missing", "% Missing")
+
+        print(mis)
+        cat("\n")
+
+    }
+
+
     if (by.cohort == TRUE) {
         leave.gap <- 1
     }
@@ -199,57 +314,13 @@ panelview <- function(data, # a data frame (long-form)
         data <- na.omit(data)
     }
     else {
-    # if there is a unit that has variable missing across all periods, then we drop this unit
-    data$rowmiss <- rowSums(is.na(data))
-    data$minrowmiss <- ave(data$rowmiss, list(data[,1]), FUN=min)
-    data <- data[!(data$minrowmiss != 0),] #if minrowmiss != 0, drop this unit
-    data <- data[1:(ncol(data)-2)]
+        # if there is a unit that has variable missing across all periods, then we drop this unit
+        data$rowmiss <- rowSums(is.na(data))
+        data$minrowmiss <- ave(data$rowmiss, list(data[,1]), FUN=min)
+        data <- data[!(data$minrowmiss != 0),] #if minrowmiss != 0, drop this unit
+        data <- data[1:(ncol(data)-2)]
     }
 
-    ## remove missing values
-    if (is.logical(leave.gap) == FALSE & !leave.gap%in%c(0, 1)) {
-        stop("leave.gap is not a logical flag.")
-    } 
-
-    if (is.logical(by.cohort) == FALSE & !by.cohort%in%c(0, 1)) {
-        stop("by.cohort is not a logical flag.")
-    } 
-
-    if (is.logical(display.all) == FALSE & !display.all%in%c(0, 1)) {
-        stop("display.all is not a logical flag.")
-    }
-
-    if (is.logical(by.group.side) == FALSE & !by.group.side%in%c(0, 1)) {
-        stop("by.group.side is not a logical flag.")
-    }
-
-    if (is.logical(by.unit) == FALSE & !by.unit%in%c(0, 1)) {
-        stop("by.unit is not a logical flag.")
-    }
-
-    if (is.logical(axis.adjust) == FALSE & !axis.adjust%in%c(0, 1)) {
-        stop("axis.adjust is not a logical flag.")
-    }
-
-    if (is.logical(pre.post) == FALSE & !pre.post%in%c(0, 1)) {
-        stop("pre.post is not a logical flag.")
-    }
-
-    if (is.logical(theme.bw) == FALSE & !theme.bw%in%c(0, 1)) {
-        stop("theme.bw is not a logical flag.")
-    }
-
-    if (is.logical(by.timing) == FALSE & !by.timing%in%c(0, 1)) {
-        stop("by.timing is not a logical flag.")
-    }
-
-    if (is.logical(by.group) == FALSE & !by.group%in%c(0, 1)) {
-        stop("by.group is not a logical flag.")
-    }
-
-    if (is.logical(ignore.treat) == FALSE & !ignore.treat%in%c(0, 1)) {
-        stop("ignore.treat is not a logical flag.")
-    }
 
     #if (na.rm == FALSE & sum(is.na(data)) > 0) {
     #    stop("Missing values in dataset. Try set na.rm = TRUE.\n")
@@ -272,7 +343,7 @@ panelview <- function(data, # a data frame (long-form)
     if (leave.gap == 0) {
         if (timegap != mintimegap | timegap != inttimegap) {
             message("Time is not evenly distributed (possibly due to missing data).\n")
-    }
+        }
     }
 
 
@@ -536,14 +607,13 @@ panelview <- function(data, # a data frame (long-form)
         N <- length(input.id)
     }
 
-    id.all <- time.all <- count <- coordin <- data.x <- x.na <- NULL
-    
-    
+    id.all <- time.all <- count <- coordin <- data.x <- x.na <- NULL  
     M <- Y <- I <- D <- X <- NULL
 
 
     if (leave.gap == 0) {
     ## check balanced panel and fill unbalanced panel
+    
     if (dim(data)[1] != TT*N) { # unbalanced panel
         data[,index.id] <- as.numeric(as.factor(data[,index.id])) 
         data[,index.time] <- as.numeric(as.factor(data[,index.time])) 
@@ -551,11 +621,12 @@ panelview <- function(data, # a data frame (long-form)
         if (!is.null(Yname)) {
             Y <- matrix(NA, TT, N)
         }
+        
         I <- matrix(0, TT, N) #I: observed(1) and missing(0)
+        
         if (ignore.treat == 0) {
             D <- matrix(0, TT, N)
         }
-        
 
         for (i in 1:dim(data)[1]) {
             if (!is.null(Yname)) {
@@ -570,6 +641,7 @@ panelview <- function(data, # a data frame (long-form)
         }
 
     } else { # balanced panel
+        
         I <- matrix(1, TT, N) 
         if (!is.null(Yname)) {
             Y <- matrix(data[,Yname], TT, N)
@@ -607,11 +679,61 @@ panelview <- function(data, # a data frame (long-form)
         }
     }
 
+    if (collapse.history == TRUE) {
+
+        if (is.null(M)) {
+            D.f <- rbind(D, I)
+        } else {
+            D.f <- rbind(D, I, M)
+        }
+
+        D.d <- as.data.frame(t(D.f))
+        suppressMessages(ff <- as.data.frame(summarise(group_by_all(D.d), COUNT = n())))
+
+        D <- t(as.matrix(ff[, 1:TT]))
+        I <- t(as.matrix(ff[, (TT+1):(2*TT)]))
+
+        if (is.null(M)) {
+            input.id <- ff[, (2 * TT + 1)]
+        } else {
+            M <- t(as.matrix(ff[, (2 * TT + 1):(3*TT)]))
+            input.id <- ff[, (3 * TT + 1)]
+        }
+
+        N <- length(input.id)
+
+        ## sort by cohort size 
+        D.id <- cbind(1:N, input.id)
+        D.id <- D.id[order(D.id[, 2], decreasing = TRUE), ]
+
+        D.id.vec <- D.id[, 1]
+        input.id <- D.id[, 2]
+
+        D <- D[, D.id.vec]
+        I <- I[, D.id.vec]
+
+        if (!is.null(M)) {
+            M <- M[, D.id.vec]
+        }
+
+        ## return(obs.missing)
+
+        ## colnames(obs.missing) <- input.id
+        ## rownames(obs.missing) <- raw.time
+
+         
+
+        ## cat("ok2")
+        ## cat(N)
+
+    }
+
+    D.old <- D ## store the original indicators 
+
 
     ## binary treatment indicator 
-    if (ignore.treat == 0 && d.bi == 1) {
+    if (ignore.treat == FALSE && d.bi == 1) {
 
-        D.old <- D ## store the original indicators
         if (length(unique(c(D.old))) > 2) {
             D[which(D > 1)] <- 1 ## set all treatment levels to 1
         }
@@ -620,7 +742,6 @@ panelview <- function(data, # a data frame (long-form)
         D <- apply(D, 2, function(vec){cumsum(coalesce(vec, 0)) + vec*0}) 
         co.total.all <- TT - apply(D, 2, sum)
         D <- ifelse(D > 0, 1, 0)
-
 
 
         ## timing
@@ -657,23 +778,21 @@ panelview <- function(data, # a data frame (long-form)
 
         ## check DID mode
         if (sum(abs(D.old[which(I==1)] - D[which(I==1)]), na.rm = TRUE) == 0) {
-            by.group <- by.group
-            FEmode <- 0
-        } else { ## FE mode
+            staggered <- 1
+        } else { ## FE mode, with reversals
             DID <- 0
             if (type == "outcome" || type == "bivar" || type == "bivariate") {
                 message("Treatment has reversals.\n")
             if (by.cohort == TRUE) {
-                stop("option by.cohort = TRUE works only with staggered adoption")
+                stop("option \"by.cohort = TRUE\" works only with staggered adoption.")
             }
-            }
-            ## by.group <- TRUE
-            FEmode <- 1
+            }            
+            staggered <- 0
         }
 
     } else {
         DID <- 0
-        FEmode <- 0
+        staggered <- 1
     }
 
     ## missing matrix 
@@ -693,7 +812,7 @@ if (leave.gap == 0) {
         con1 <- type == "treat" && pre.post == TRUE
         con2 <- type == "outcome" && by.group == FALSE
 
-        if (FEmode == 0 && (con1 || con2)) {  ## DID type data
+        if (staggered == 1 && (con1 || con2)) {  ## DID type data
             
             tr <- D[TT,] == 1     # cross-sectional: treated unit
 
@@ -773,7 +892,7 @@ else if (leave.gap == 1) {
         con1 <- type == "treat" && pre.post == TRUE
         con2 <- type == "outcome" && by.group == FALSE
 
-        if (FEmode == 0 && (con1 || con2)) {  ## DID type data
+        if (staggered == 1 && (con1 || con2)) {  ## DID type data
             
             tr <- D[TT,] == 1     # cross-sectional: treated unit
 
@@ -788,9 +907,6 @@ else if (leave.gap == 1) {
                 Y.tr <- as.matrix(Y[,which(tr==1)])
                 Y.co <- as.matrix(Y[,which(tr==0)])
             }
-
-            
-            
 
             Ntr <- sum(tr)
             Nco <- N - Ntr
@@ -865,6 +981,27 @@ else if (leave.gap == 1) {
     colnames(obs.missing) <- input.id
     rownames(obs.missing) <- raw.time
     
+    ## cat("ok")
+    ## plot unique treatment histories 
+    #if (collapse.history == TRUE) {
+
+    #    obs.missing.d <- as.data.frame(t(obs.missing))
+    #    suppressMessages(ff <- as.data.frame(summarise(group_by_all(obs.missing.d), COUNT = n())))
+
+    #    obs.missing <- t(as.matrix(ff[, 1:TT]))
+    #    input.id <- ff[, (TT + 1)]
+
+        ## return(obs.missing)
+
+    #    colnames(obs.missing) <- input.id
+    #    rownames(obs.missing) <- raw.time
+
+    #    N <- length(input.id) 
+
+        ## cat("ok2")
+        ## cat(N)
+
+    #}
 
     time <- raw.time
     id <- input.id 
@@ -930,19 +1067,25 @@ else if (leave.gap == 1) {
         }   
     }
 
-    if (axis.adjust == TRUE) {
-        angle <- 45
+    if (is.null(axis.lab.angle)==FALSE) {
+        angle <- axis.lab.angle
         x.v <- 1
         x.h <- 1
     } else {
-        angle <- 0
-        x.v <- 0
-        if (type == "treat") {
-            x.h <- 0.5
+        if (axis.adjust == TRUE) {
+            angle <- 45
+            x.v <- 1
+            x.h <- 1
         } else {
-            x.h <- 0
+            angle <- 0
+            x.v <- 0
+            if (type == "treat") {
+                x.h <- 0.5
+            } else {
+                x.h <- 0
+            }
         }
-    }
+    }    
     
     ## type of plots
     if (!is.numeric(time[1])) {
@@ -991,8 +1134,10 @@ else if (leave.gap == 1) {
         legend.pos <- "bottom"
     }
 
-
-    ############  START  ###############    
+    ###########################
+    ## Outcome Plot
+    ###########################
+    
     if (type == "outcome") {
         
         ## axes labels
@@ -1011,32 +1156,22 @@ else if (leave.gap == 1) {
         raw.color <- NULL
 
         ## color setting
-        if (is.null(color)==TRUE) {
-            if (theme.bw == FALSE) {
-                if (ignore.treat == 0) {
-                    raw.color <- c("#99999950", "#FC8D6280", "red")
-                    
-                } else {
-                    raw.color <- "#99999950"
-                }
-            } else {
+        if (is.null(color) == TRUE) {
+            if (ignore.treat == FALSE) {
                 if (outcome.type == "continuous") {
-                    if (ignore.treat == 0) {
-                        raw.color <- c("#5e5e5e50", "#124ab965", "#062263")
-                    } else {
-                        raw.color <- "#5e5e5e50"
-                    }
+                    raw.color <- c("#5e5e5e50", "#FC8D62", "red")
                 } else {
-                    if (ignore.treat == 0) {
-                        raw.color <- c("#5e5e5e60", "#4671D5", "#06266F")
-                    } else {
-                        raw.color <- "#5e5e5e60"
-                    }
+                    raw.color <- c("#5e5e5e60", "#FC8D62", "red")
                 }
+                if (type == "outcome" && (staggered == 0 | by.group == TRUE | pre.post == FALSE)) { # two conditions only
+                    raw.color <- raw.color[c(1,3)]
+                }
+            } else { # ignore treat
+                raw.color <- "#5e5e5e50"
             }
-        } else {        
-            if (ignore.treat == 0) {
-                if (FEmode == 1) {
+        } else {    # color is specified  
+            if (ignore.treat == FALSE) {
+                if (staggered == 0 | pre.post == FALSE) { # with reversals or two groups only
                     if (length(color) != 2) {
                         stop("Length of \"color\" should be equal to 2.\n")    
                     } else {
@@ -1066,7 +1201,11 @@ else if (leave.gap == 1) {
             }
         }
 
-        if (ignore.treat == 1) {
+        #####################    
+        ## prepare to plot
+        #####################
+
+        if (ignore.treat == TRUE) { # do not show treatment status
 
             data <- cbind.data.frame("time" = rep(time[show], N), 
                                      "outcome" = c(Y[show,]),
@@ -1179,196 +1318,13 @@ else if (leave.gap == 1) {
             
             suppressWarnings(print(p))
 
-        }
-        else if (ignore.treat == 0 && by.group == FALSE) { ## Mixed units
+        } # ignore.treat == TRUE over
+        else if (ignore.treat == FALSE && by.group == FALSE) { ## Mixed units
             
             ## time-line
             if (outcome.type == "continuous") { ## continuous outcome
                 
-                if (FEmode == 0) { ## DID data
-
-                    time.bf <- time[unique(T0)]
-                    pst <- D.tr
-
-                    for (i in 1:Ntr) {
-                        pst[T0[i], i] <- 1
-                    }
-
-                    time.pst <- c(pst[show,] * time[show])
-                    time.pst <- time.pst[which(c(pst[show,])==1)]
-                    Y.tr.pst <- c(Y.tr[show,])[which(pst[show,]==1)]
-                    
-                    id.tr.pst <- matrix(rep(1:Ntr,each=TT),TT,Ntr,byrow=FALSE)[show,]
-                    id.tr.pst <- c(id.tr.pst)[which(pst[show,]==1)]
-                    T1_0 <- c(T1)[which(T1==0)]
-                    T1_1 <- c(T1)[which(T1==1)]
-                    N_T1_1 <- sum(T1_1)
-                    N_T1_0 <- Nco*nT + Ntr*nT + length(Y.tr.pst) - N_T1_1                   
-
-                    data <- cbind.data.frame("time" = c(rep(time[show], N), time.pst),
-                                             "outcome" = c(c(Y.tr[show,]),
-                                                           c(Y.co[show,]),
-                                                           Y.tr.pst),
-                                             "type" = c(rep("tr",(Ntr*nT)),
-                                                        rep("co",(Nco*nT)),
-                                                        rep("tr.pst",length(Y.tr.pst))),
-                                            "last_dot" = c(rep("0",N_T1_0),
-                                                           rep("1",N_T1_1)),
-                                            "id" = c(rep(1:N,each = nT), id.tr.pst*(-1)))
-
-                    idtimes <- sapply(1:length(data$id),function(x)sum(data$id[1:x]==data$id[x]))
-                    data <- cbind(data, idtimes)
-                    data$idtimes <- ave(data$idtimes, data$id, FUN=max)
-                    data$last_dot <- 0
-                    data$last_dot[data$idtimes == 1] <- 1
-
-
-                    ## legend 
-                    set.limits = c("co", "tr", "tr.pst")
-                    set.colors = c(raw.color[1], raw.color[2], raw.color[3])
-                    set.linetypes = c("solid","solid","solid")
-                    set.linewidth = c(0.5, 0.5, 0.5)
-                    if (!is.null(legend.labs)) {
-                        if (length(legend.labs) != 3) {
-                            warning("Incorrect number of labels in the legend. Using default.\n")
-                            set.labels <- c("Controls","Treated (Pre)","Treated (Post)")  
-                        } else {
-                            set.labels <- legend.labs
-                        }
-                    } else {
-                        set.labels <- c("Controls","Treated (Pre)","Treated (Post)") 
-                    }
-                    labels.ncol <- 3
-
-                
-
-                if (by.cohort == TRUE) {
-                    # expand to balanced panel:
-                    ref <- expand.grid(id = unique(data.old[,index.id]), time = unique(data.old[,index.time]))
-                    data.old <- merge(ref, data.old, by = 1:2, all.x = TRUE)
-                    colnames(data.old)[4] <- "treatment"
-
-                    #data.old <- data.old %>%
-                     #               arrange(id) %>%
-                      #              mutate(post_value = lead(treatment))
-                    #for (i in 1:dim(data.old)[1]) {
-                     #   if (isTRUE(data.old[i, 2] == max(data.old$time))==TRUE) {
-                      #      data.old[i, ncol(data.old)] <- NA
-                       # }
-                    #}
-
-                    #data.old <- data.old[with(data.old, order(id,time)), ]  # sort by id and then by date
-                    #data.old$pre_value = c(NA, data.old$treatment[-length(data.old$treatment)]) # create a new var with data displaced by 1 unit                   
-                    #data.old$pre_value[data.old$id != c(NA, data.old$id[-length(data.old$id)])] = NA # NA data with different current and lagged id
-                    
-                    #for (i in 2:dim(data.old)[1]) {
-                        #if (isTRUE(data.old[i-1, "pre_value"] == 1)==TRUE & is.na(data.old[i, "pre_value"])==TRUE) {
-                         #   data.old[i, "pre_value"] <- 1
-                        #}
-                       # if (is.na(data.old[i, "treatment"])==TRUE & isTRUE(data.old[i, "pre_value"] == 1)==TRUE) {
-                      #      data.old[i, "treatment"] <- 1
-                     #   }
-                    #}
-
-
-                    #for (i in (dim(data.old)[1]-1):1) { # still need to bysort each id!
-                     #   if (is.na(data.old[i, "post_value"])==TRUE & isTRUE(data.old[i+1, "post_value"] == 0)==TRUE) {
-                      #      data.old[i, "post_value"] <- 0
-                       # }
-                        #if (is.na(data.old[i, "treatment"])==TRUE & isTRUE(data.old[i, "post_value"] == 0)==TRUE) {
-                         #   data.old[i, "treatment"] <- 0
-                    #}
-                    #}
-
-                    #data.old <- data.old[ , ! names(data.old) %in% c("pre_value", "post_value")]
-
-
-                    data.old$treatment<- ave(data.old$treatment, data.old$id, FUN=function(x) approxfun(x, method = "constant", rule=2)(seq_along(x)))
-                    #1. If a person's first follow-up data is missing, then add the value of the next row;
-                    #2. If a person's non-first follow-up data is missing, then add the value of the previous row;
-                    #3. If multiple consecutive follow-up data are missing, then add the value of the previous non-missing row.
-
-
-
-                    data.old$treatment_history <- ave(data.old[,"treatment"], data.old$id, FUN = function(x) paste(x, collapse= "_")) # data.old[,4]: treatment; data.old[,1]: id
-
-                    cat(paste0("Number of unique treatment history: ", length(unique(data.old$treatment_history))))
-                    cat("\n")
-
-#print(data.old)
-#print(unique(data.old$treatment_history)) #sss
-
-
-                    if (length(unique(data.old$treatment_history)) > 20) {
-                        stop("Option \"by.cohort = TRUE\" would not work if the number of unique treatment history is more than 20.")
-                    }
-                    else {
-                        data.old$outcomehistorymean <- ave(data.old[,3], data.old$treatment_history, data.old$time, FUN=function(x) mean(x, na.rm=TRUE)) # data.old[,3]: outcome
-
-                        data.old <- data.old[,c("time", "treatment", "treatment_history", "outcomehistorymean")]
-
-                        names(data.old)[names(data.old) == 'outcomehistorymean'] <- 'outcome'
-                        names(data.old)[names(data.old) == 'treatment_history'] <- 'id'
-                        #data.old <- data.old[!duplicated(data.old), ]
-                        N_cohort <- length(sort(unique(data.old$id))) 
-
-                        #group id and time to numeric values:
-                        data.old[,3] <- as.numeric(as.factor(data.old[,3]))
-                        data.old[,1] <- as.numeric(as.factor(data.old[,1]))
-
-                        Y <- matrix(NA, TT, N_cohort) 
-                        for (i in 1:dim(data.old)[1]) {
-                            Y[data.old[i,1],data.old[i,3]] <- data.old[i,4] # data.old[,1]: time; data.old[,3]: id; data.old[,4]: outcome
-                        }
-
-                        D <- matrix(0, TT, N_cohort)
-                        for (i in 1:dim(data.old)[1]) {
-                            D[data.old[i,1],data.old[i,3]] <- data.old[i,2] # data.old[,2]: treatment
-                        }
-
-                        tr <- D[TT,] == 1
-                        Ntr <- sum(tr)
-                        Nco <- N_cohort - Ntr
-                        Y.tr <- Y.co <- NULL
-                        Y.tr <- as.matrix(Y[,which(tr==1)])
-                        Y.co <- as.matrix(Y[,which(tr==0)])
-                        tr.pos <- which(D[TT,] == 1) ## which units are treated
-                        T1 <- apply(D == 1, 2, sum, na.rm = TRUE)[tr.pos] ## number of periods expose to treatment 
-                        T1[which(T1 > 1)] <- 0 ## indicate the last dot of treatment status change
-                        D.tr <- as.matrix(D[,which(tr==1)])
-                        pst <- D.tr
-                        
-                        time.pst <- c(pst[show,] * time[show])
-                        time.pst <- time.pst[which(c(pst[show,])==1)]
-                        Y.tr.pst <- c(Y.tr[show,])[which(pst[show,]==1)]
-                        id.tr.pst <- matrix(rep(1:Ntr,each=TT),TT,Ntr,byrow=FALSE)[show,]
-                        id.tr.pst <- c(id.tr.pst)[which(pst[show,]==1)]
-                        T1_0 <- c(T1)[which(T1==0)] 
-                        T1_1 <- c(T1)[which(T1==1)] #last dot of treatment status change
-                        N_T1_1 <- sum(T1_1)
-                        N_T1_0 <- Nco*nT + Ntr*nT + length(Y.tr.pst) - N_T1_1                        
-                    
-
-                    data <- cbind.data.frame("time" = c(rep(time[show], N_cohort), time.pst),
-                                             "outcome" = c(c(Y.tr[show,]),
-                                                           c(Y.co[show,]),
-                                                           Y.tr.pst),
-                                             "type" = c(rep("tr",(Ntr*nT)),
-                                                        rep("co",(Nco*nT)),
-                                                        rep("tr.pst",length(Y.tr.pst))),
-                                            "last_dot" = c(rep("0",N_T1_0),
-                                                           rep("1",N_T1_1)),
-                                            "id" = c(rep(1:N_cohort,each = nT), id.tr.pst*(-1)))
-
-                    idtimes <- sapply(1:length(data$id),function(x)sum(data$id[1:x]==data$id[x]))
-                    data <- cbind(data, idtimes)
-                    data$idtimes <- ave(data$idtimes, data$id, FUN=max)
-                    data$last_dot <- 0
-                    data$last_dot[data$idtimes == 1] <- 1
-                    }
-                }
-                } 
-                else { ## FE mode data
+                if (staggered == 0 || (by.cohort == FALSE && pre.post == FALSE)) { ## with reversals
                 
                     D.plot <- D.old
                     D.plot[which(D.plot == 0)] <- NA
@@ -1406,7 +1362,7 @@ else if (leave.gap == 1) {
 
                     ## legend
                     set.limits = c("co","tr")
-                    set.colors = raw.color[1:2]
+                    set.colors = raw.color
                     set.linetypes = c("solid","solid")
                     set.linewidth = c(0.5, 0.5)
                     if (!is.null(legend.labs)) {
@@ -1421,6 +1377,167 @@ else if (leave.gap == 1) {
                     }
                     labels.ncol <- 2
                 }
+                else { ## staggered 
+
+                    time.bf <- time[unique(T0)]
+                    pst <- D.tr
+
+                    for (i in 1:Ntr) {
+                        pst[T0[i], i] <- 1
+                    }
+
+                    time.pst <- c(pst[show,] * time[show])
+                    time.pst <- time.pst[which(c(pst[show,])==1)]
+                    Y.tr.pst <- c(Y.tr[show,])[which(pst[show,]==1)]
+                    
+                    id.tr.pst <- matrix(rep(1:Ntr,each=TT),TT,Ntr,byrow=FALSE)[show,]
+                    id.tr.pst <- c(id.tr.pst)[which(pst[show,]==1)]
+                    T1_0 <- c(T1)[which(T1==0)]
+                    T1_1 <- c(T1)[which(T1==1)]
+                    N_T1_1 <- sum(T1_1)
+                    N_T1_0 <- Nco*nT + Ntr*nT + length(Y.tr.pst) - N_T1_1                   
+                    
+                    data <- cbind.data.frame("time" = c(rep(time[show], N), time.pst),
+                                             "outcome" = c(c(Y.tr[show,]),
+                                                           c(Y.co[show,]),
+                                                           Y.tr.pst),
+                                             "type" = c(rep("tr",(Ntr*nT)),
+                                                        rep("co",(Nco*nT)),
+                                                        rep("tr.pst",length(Y.tr.pst))),
+                                            "last_dot" = c(rep("0",N_T1_0),
+                                                           rep("1",N_T1_1)),
+                                            "id" = c(rep(1:N,each = nT), id.tr.pst + N0)) # post seen as different groups
+                    idtimes <- sapply(1:length(data$id),function(x)sum(data$id[1:x]==data$id[x]))
+                    data <- cbind(data, idtimes)
+                    data$idtimes <- ave(data$idtimes, data$id, FUN=max)
+                    data$last_dot <- 0
+                    data$last_dot[data$idtimes == 1] <- 1
+                     ## legend 
+                    set.limits = c("co", "tr", "tr.pst")
+                    set.colors = raw.color
+                    set.linetypes = c("solid","solid","solid")
+                    set.linewidth = c(0.5, 0.5, 0.5)
+                    if (!is.null(legend.labs)) {
+                        if (length(legend.labs) != 3) {
+                             warning("Incorrect number of labels in the legend. Using default.\n")
+                            set.labels <- c("Controls","Treated (Pre)","Treated (Post)")  
+                        } else {
+                            set.labels <- legend.labs
+                        }
+                    } else {
+                        set.labels <- c("Controls","Treated (Pre)","Treated (Post)") 
+                    }
+                    labels.ncol <- 3
+                    
+                    if (by.cohort == TRUE) {
+                        # expand to balanced panel:
+                        ref <- expand.grid(id = unique(data.old[,index.id]), time = unique(data.old[,index.time]))
+                        data.old <- merge(ref, data.old, by = 1:2, all.x = TRUE)
+                        colnames(data.old)[4] <- "treatment"
+                        data.old$treatment<- ave(data.old$treatment, data.old$id, FUN=function(x) approxfun(x, method = "constant", rule=2)(seq_along(x)))
+                        #1. If a person's first follow-up data is missing, then add the value of the next row;
+                        #2. If a person's non-first follow-up data is missing, then add the value of the previous row;
+                        #3. If multiple consecutive follow-up data are missing, then add the value of the previous non-missing row.
+
+                        data.old$treatment_history <- ave(data.old[,"treatment"], data.old$id, FUN = function(x) paste(x, collapse= "_")) # data.old[,4]: treatment; data.old[,1]: id
+                        cat(paste0("Number of unique treatment histories: ", length(unique(data.old$treatment_history))))
+                        cat("\n")
+                        #print(data.old)
+                        #print(unique(data.old$treatment_history)) #sss
+
+                        if (length(unique(data.old$treatment_history)) > 20) {
+                            stop("\"by.cohort = TRUE\" ignored the number of unique treatment history is more than 20.")
+                        }
+                        else {
+                            data.old$outcomehistorymean <- ave(data.old[,3], data.old$treatment_history, data.old$time, FUN=function(x) mean(x, na.rm=TRUE)) # data.old[,3]: outcome
+
+                            data.old <- data.old[,c("time", "treatment", "treatment_history", "outcomehistorymean")]
+
+                            names(data.old)[names(data.old) == 'outcomehistorymean'] <- 'outcome'
+                            names(data.old)[names(data.old) == 'treatment_history'] <- 'id'
+                            #data.old <- data.old[!duplicated(data.old), ]
+                            N_cohort <- length(sort(unique(data.old$id))) 
+
+                            #group id and time to numeric values:
+                            data.old[,3] <- as.numeric(as.factor(data.old[,3]))
+                            data.old[,1] <- as.numeric(as.factor(data.old[,1]))
+
+                            Y <- matrix(NA, TT, N_cohort) 
+                            for (i in 1:dim(data.old)[1]) {
+                                Y[data.old[i,1],data.old[i,3]] <- data.old[i,4] # data.old[,1]: time; data.old[,3]: id; data.old[,4]: outcome
+                            }
+
+                            D <- matrix(0, TT, N_cohort)
+                            for (i in 1:dim(data.old)[1]) {
+                                D[data.old[i,1],data.old[i,3]] <- data.old[i,2] # data.old[,2]: treatment
+                            }
+
+                            tr <- D[TT,] == 1
+                            Ntr <- sum(tr)
+                            Nco <- N_cohort - Ntr
+                            Y.tr <- Y.co <- NULL
+                            Y.tr <- as.matrix(Y[,which(tr==1)])
+                            Y.co <- as.matrix(Y[,which(tr==0)])
+                            tr.pos <- which(D[TT,] == 1) ## which units are treated
+                            T1 <- apply(D == 1, 2, sum, na.rm = TRUE)[tr.pos] ## number of periods expose to treatment 
+                            T1[which(T1 > 1)] <- 0 ## indicate the last dot of treatment status change
+                            pst <- as.matrix(D[,which(tr==1)]) # treatment matrix
+                                                                              
+
+
+                            time.pst <- c(pst[show,] * time[show])
+                            time.pst <- time.pst[which(c(pst[show,])==1)]
+                            Y.tr.pst <- c(Y.tr[show,])[which(pst[show,]==1)]
+                            id.tr.pst <- matrix(rep(1:Ntr,each=TT),TT,Ntr,byrow=FALSE)[show,]
+                            id.tr.pst <- c(id.tr.pst)[which(pst[show,]==1)]
+                            T1_0 <- c(T1)[which(T1==0)] 
+                            T1_1 <- c(T1)[which(T1==1)] #last dot of treatment status change
+                            N_T1_1 <- sum(T1_1)
+                            N_T1_0 <- Nco*nT + Ntr*nT + length(Y.tr.pst) - N_T1_1                        
+                        
+                            if (pre.post == TRUE) {
+                                data <- cbind.data.frame("time" = c(rep(time[show], N_cohort), time.pst),
+                                                    "outcome" = c(c(Y.tr[show,]),
+                                                                c(Y.co[show,]),
+                                                                Y.tr.pst),
+                                                    "type" = c(rep("tr",(Ntr*nT)),
+                                                                rep("co",(Nco*nT)),
+                                                                rep("tr.pst",length(Y.tr.pst))),
+                                                    "id" = c(rep(1:N_cohort,each = nT), id.tr.pst + N0))
+                            } else {
+                                tr.vec <- rep("co", nT * N_cohort)
+                                tr.vec[which(c(pst[show,])==1)] <- "tr"
+                                data <- cbind.data.frame("time" = c(rep(time[show], N_cohort)),
+                                                    "outcome" = c(c(Y.tr[show,]), c(Y.co[show,])),
+                                                    "type" = tr.vec,
+                                                    "id" = c(rep(1:N_cohort,each = nT)))    
+                                ## legend 
+                                set.limits = c("co", "tr")
+                                set.colors = raw.color[1:2]
+                                set.linetypes = c("solid","solid")
+                                set.linewidth = c(0.5, 0.5)
+                                if (!is.null(legend.labs)) {
+                                    if (length(legend.labs) != 2) {
+                                        warning("Incorrect number of labels in the legend. Using default.\n")
+                                        set.labels <- c("Controls", "Treated")  
+                                    } else {
+                                        set.labels <- legend.labs
+                                    }
+                                } else {
+                                    set.labels <- c("Controls","Treated") 
+                                }
+                                labels.ncol <- 2                                                                        
+                            }                           
+                            # last perioed treated (show using a dot)
+                            idtimes <- sapply(1:length(data$id),function(x)sum(data$id[1:x]==data$id[x]))
+                            data <- cbind(data, idtimes)
+                            data$idtimes <- ave(data$idtimes, data$id, FUN=max)
+                            data$last_dot <- 0
+                            data$last_dot[data$idtimes == 1] <- 1                            
+                        }
+                    }
+                } 
+                
             
 
                 ## theme
@@ -1492,11 +1609,11 @@ else if (leave.gap == 1) {
                                      aes(x = time, y = outcome, colour = type, shape = type))
 
                 ## legend
-                if (FEmode == 0) {
+                if (staggered == 1 && pre.post == TRUE) {
                     
                     time.bf <- time[unique(T0)]
                     set.limits = c("co", "tr", "tr.pst")
-                    set.colors = c(raw.color[1], raw.color[2], raw.color[3])
+                    set.colors = raw.color 
                     set.shapes = c(1, 1, 16)
                     if (!is.null(legend.labs)) {
                         if (length(legend.labs) != 3) {
@@ -1513,7 +1630,7 @@ else if (leave.gap == 1) {
                 } else {
                     
                     set.limits = c("co", "tr")
-                    set.colors = raw.color[1:2]
+                    set.colors = raw.color
                     set.shapes = c(1, 1)
                     if (!is.null(legend.labs)) {
                         if (length(legend.labs) != 2) {
@@ -1765,236 +1882,236 @@ else if (leave.gap == 1) {
                 return(p)
             }
 
-        if (by.group.side == FALSE) {
-            if (length(unique(unit.type)) == 1) {
-                
-                if (1%in%unit.type) {
-                    p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"),
-                                         legend, nrow = 2, heights = c (1, 1/5)),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    } else {
-                        suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }   
-                }
-                else if (2%in%unit.type) {
-                    p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p2 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p2 + theme(legend.position="none"),
-                                         legend, nrow = 2, heights = c (1, 1/5)),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2)))) 
-                    } else {
-                        suppressWarnings(grid.arrange(p2 + theme(legend.position="none"),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }   
-                }
-                else if (3%in%unit.type) {
-                    p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p3 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p3 + theme(legend.position="none"),
-                                         legend, nrow = 2, heights = c (1, 1/5)),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2)))) 
-                    } else {
-                        suppressWarnings(grid.arrange(p3 + theme(legend.position="none"),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }  
-                }
+            if (by.group.side == FALSE) {
+                if (length(unique(unit.type)) == 1) {
+                    
+                    if (1%in%unit.type) {
+                        p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"),
+                                            legend, nrow = 2, heights = c (1, 1/5)),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        } else {
+                            suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }   
+                    }
+                    else if (2%in%unit.type) {
+                        p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p2 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p2 + theme(legend.position="none"),
+                                            legend, nrow = 2, heights = c (1, 1/5)),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2)))) 
+                        } else {
+                            suppressWarnings(grid.arrange(p2 + theme(legend.position="none"),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }   
+                    }
+                    else if (3%in%unit.type) {
+                        p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p3 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p3 + theme(legend.position="none"),
+                                            legend, nrow = 2, heights = c (1, 1/5)),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2)))) 
+                        } else {
+                            suppressWarnings(grid.arrange(p3 + theme(legend.position="none"),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }  
+                    }
 
-            }
-            else if (length(unique(unit.type))==2) {
-                
-                if (!1%in%unit.type) {
+                }
+                else if (length(unique(unit.type))==2) {
+                    
+                    if (!1%in%unit.type) {
+                        p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
+                        p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p2 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p2 + theme(legend.position="none"), p3 + theme(legend.position="none"),
+                                            legend, nrow = 3, heights = c (1, 1, 1/5)),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))  
+                        } else {
+                            suppressWarnings(grid.arrange(p2 + theme(legend.position="none"),
+                                            p3 + theme(legend.position="none"),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }  
+                    }
+                    else if (!2%in%unit.type) {
+                        p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
+                        p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p3 + theme(legend.position="none"),
+                                            legend, nrow = 3, heights = c (1, 1, 1/5)),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))  
+                        } else {
+                            suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
+                                            p3 + theme(legend.position="none"),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }  
+                    }
+                    else if (!3%in%unit.type) {
+                        p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
+                        p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p2 + theme(legend.position="none"),
+                                            legend, nrow = 3, heights = c (1, 1, 1/5)),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))  
+                        } else {
+                            suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
+                                            p2 + theme(legend.position="none"),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }   
+                    }
+
+                }
+                else {
+                    
+                    p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
                     p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
                     p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p2 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p2 + theme(legend.position="none"), p3 + theme(legend.position="none"),
-                                         legend, nrow = 3, heights = c (1, 1, 1/5)),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))  
-                    } else {
-                        suppressWarnings(grid.arrange(p2 + theme(legend.position="none"),
-                                         p3 + theme(legend.position="none"),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }  
-                }
-                else if (!2%in%unit.type) {
-                    p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
-                    p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p3 + theme(legend.position="none"),
-                                         legend, nrow = 3, heights = c (1, 1, 1/5)),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))  
-                    } else {
-                        suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
-                                         p3 + theme(legend.position="none"),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }  
-                }
-                else if (!3%in%unit.type) {
-                    p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
-                    p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
                     if (legend.pos != "none") {
                         suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
                         legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
                         suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p2 + theme(legend.position="none"),
-                                         legend, nrow = 3, heights = c (1, 1, 1/5)),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))  
+                                        p3 + theme(legend.position="none"), legend, nrow = 4, heights = c (1, 1, 1, 1/5)),
+                                        top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
                     } else {
                         suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
-                                         p2 + theme(legend.position="none"),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }   
-                }
+                                            p2 + theme(legend.position="none"),
+                                            p3 + theme(legend.position="none"),
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                    }
 
+                }
             }
-            else {
-                
-                p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
-                p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
-                p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
-                if (legend.pos != "none") {
-                    suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
-                    legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                    suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p2 + theme(legend.position="none"),
-                                     p3 + theme(legend.position="none"), legend, nrow = 4, heights = c (1, 1, 1, 1/5)),
-                                     top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                } else {
-                    suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
-                                         p2 + theme(legend.position="none"),
-                                         p3 + theme(legend.position="none"),
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                }
+            else if (by.group.side == TRUE) {
 
-            }
-        }
-        else if (by.group.side == TRUE) {
+                if (length(unique(unit.type)) == 1) {
+                    
+                    if (1%in%unit.type) {
+                        p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"),
+                                            nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
+                        } else {
+                            suppressWarnings(grid.arrange(p1 + theme(legend.position="none"), nrow =1,
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }   
+                    }
+                    else if (2%in%unit.type) {
+                        p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p2 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p2 + theme(legend.position="none"),
+                                            nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
+                        } else {
+                            suppressWarnings(grid.arrange(p2 + theme(legend.position="none"), nrow =1,
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }   
+                    }
+                    else if (3%in%unit.type) {
+                        p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p3 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p3 + theme(legend.position="none"),
+                                            nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
+                        } else {
+                            suppressWarnings(grid.arrange(p3 + theme(legend.position="none"), nrow =1,
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }  
+                    }
 
-            if (length(unique(unit.type)) == 1) {
-                
-                if (1%in%unit.type) {
-                    p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"),
-                                         nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
-                    } else {
-                        suppressWarnings(grid.arrange(p1 + theme(legend.position="none"), nrow =1,
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }   
                 }
-                else if (2%in%unit.type) {
-                    p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p2 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p2 + theme(legend.position="none"),
-                                         nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
-                    } else {
-                        suppressWarnings(grid.arrange(p2 + theme(legend.position="none"), nrow =1,
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }   
-                }
-                else if (3%in%unit.type) {
-                    p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p3 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p3 + theme(legend.position="none"),
-                                         nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
-                    } else {
-                        suppressWarnings(grid.arrange(p3 + theme(legend.position="none"), nrow =1,
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }  
-                }
+                else if (length(unique(unit.type))==2) {
+                    
+                    if (!1%in%unit.type) {
+                        p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
+                        p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p2 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p2 + theme(legend.position="none"), p3 + theme(legend.position="none"),
+                                            nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
+                        } else {
+                            suppressWarnings(grid.arrange(p2 + theme(legend.position="none"),
+                                            p3 + theme(legend.position="none"), nrow =1,
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }  
+                    }
+                    else if (!2%in%unit.type) {
+                        p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
+                        p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p3 + theme(legend.position="none"),
+                                            nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
+                        } else {
+                            suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
+                                            p3 + theme(legend.position="none"), nrow =1,
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }  
+                    }
+                    else if (!3%in%unit.type) {
+                        p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
+                        p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
+                        if (legend.pos != "none") {
+                            suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
+                            legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+                            suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p2 + theme(legend.position="none"),
+                                            nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
+                        } else {
+                            suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
+                                            p2 + theme(legend.position="none"), nrow =1,
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                        }   
+                    }
 
-            }
-            else if (length(unique(unit.type))==2) {
-                
-                if (!1%in%unit.type) {
-                    p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
-                    p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p2 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p2 + theme(legend.position="none"), p3 + theme(legend.position="none"),
-                                         nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
-                    } else {
-                        suppressWarnings(grid.arrange(p2 + theme(legend.position="none"),
-                                         p3 + theme(legend.position="none"), nrow =1,
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }  
                 }
-                else if (!2%in%unit.type) {
-                    p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
-                    p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
-                    if (legend.pos != "none") {
-                        suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
-                        legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-                        suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p3 + theme(legend.position="none"),
-                                         nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
-                    } else {
-                        suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
-                                         p3 + theme(legend.position="none"), nrow =1,
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }  
-                }
-                else if (!3%in%unit.type) {
+                else {
                     p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
                     p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
+                    p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
+
                     if (legend.pos != "none") {
                         suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
+
                         legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+
                         suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p2 + theme(legend.position="none"),
-                                         nrow =1, top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
+                                        p3 + theme(legend.position="none"), nrow =1,
+                                        top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
                     } else {
                         suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
-                                         p2 + theme(legend.position="none"), nrow =1,
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                    }   
+                                            p2 + theme(legend.position="none"),
+                                            p3 + theme(legend.position="none"), nrow =1,
+                                            top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
+                    }
+
                 }
-
             }
-            else {
-                p1 <- subplot(data1, limits1, labels1, colors1, main1, outcome.type, theme.bw)
-                p2 <- subplot(data2, limits2, labels2, colors2, main2, outcome.type, theme.bw)
-                p3 <- subplot(data3, limits3, labels3, colors3, main3, outcome.type, theme.bw)
-
-                if (legend.pos != "none") {
-                    suppressWarnings(g <- ggplotGrob(p1 + theme(legend.position="bottom"))$grobs)
-
-                    legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
-
-                    suppressWarnings(grid.arrange(arrangeGrob(p1 + theme(legend.position="none"), p2 + theme(legend.position="none"),
-                                     p3 + theme(legend.position="none"), nrow =1,
-                                     top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))),legend,nrow=2,heights=c(1,1/8)))
-                } else {
-                    suppressWarnings(grid.arrange(p1 + theme(legend.position="none"),
-                                         p2 + theme(legend.position="none"),
-                                         p3 + theme(legend.position="none"), nrow =1,
-                                         top = textGrob(main, gp = gpar(fontsize = cex.main.top,font=2))))
-                }
-
-            }
-        }
-    }    ## end of raw plot
-    
+        }  ## end of (by.group = TRUE or by.group.side = TRUE); END of outcome plot    
 
 
     }   ############# Treatment Status ###############
     else if (type=="treat") {
-        
+
+
         if (is.null(xlab)==TRUE) {
             xlab <- index[2]
         } else if (xlab == "") {
@@ -2002,19 +2119,28 @@ else if (leave.gap == 1) {
         }
         if (is.null(ylab)==TRUE) {
             ylab <- index[1]
+            if (collapse.history == TRUE) {
+                ylab <- "Number of Units"
+            }
         } else if (ylab == "") {
             ylab <- NULL
         }
 
         if (is.null(main)==TRUE) {
-            if (ignore.treat == 0) {
-                main <- "Treatment Status"
+            if (collapse.history == TRUE) {
+                main <- "Unique Treatment Histories"
             } else {
-                main <- "Missing Values"
+                if (ignore.treat == 0) {
+                    main <- "Treatment Status"
+                } else {
+                    main <- "Missing Values"
+                }
             }
         } else if (main == "") {
             main <- NULL
         }
+
+        ## cat(N)
 
         units <- rep(rev(1:N), each = TT)
         period <- rep(1:TT, N)
