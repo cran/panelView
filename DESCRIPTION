@@ -1,8 +1,8 @@
 Package: panelView
 Type: Package
 Title: Visualizing Panel Data
-Version: 1.1.18
-Date: 2024-06-17
+Version: 1.2.0
+Date: 2026-03-17
 Authors@R: 
   c(person("Hongyu", "Mou", , "hongyumou@g.ucla.edu", role = c("aut")), 
   person("Licheng", "Liu", ,"liulch@mit.edu", role = c("aut")), 
@@ -14,11 +14,13 @@ URL: https://yiqingxu.org/packages/panelview/index.html
 License: MIT + file LICENSE
 Imports: ggplot2 (>= 2.1.0), gridExtra, grid, dplyr (>= 1.0.0)
 Depends: R (>= 2.10)
-RoxygenNote: 6.0.1
+Encoding: UTF-8
+Suggests: testthat (>= 3.0.0)
+RoxygenNote: 7.3.2
 NeedsCompilation: no
-Packaged: 2024-06-17 06:48:14 UTC; yiqingxu
+Packaged: 2026-03-11 07:23:13 UTC; yiqingxu
 Author: Hongyu Mou [aut],
   Licheng Liu [aut],
-  Yiqing Xu [aut, cre] (<https://orcid.org/0000-0003-2041-6671>)
+  Yiqing Xu [aut, cre] (ORCID: <https://orcid.org/0000-0003-2041-6671>)
 Repository: CRAN
-Date/Publication: 2024-06-17 07:20:02 UTC
+Date/Publication: 2026-03-11 09:00:03 UTC
