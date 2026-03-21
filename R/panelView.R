@@ -180,7 +180,7 @@ panelview <- function(data, # a data frame (long-form)
     }
 
     if (by.group == TRUE) {
-        if (is.null(by.cohort)==FALSE) {
+        if (isTRUE(by.cohort)) {
             warning("option \"by.cohort\" is not allowed with \"by.group = TRUE\" or \"by.group.side = TRUE\". Ignored.")
         }
     }
@@ -493,7 +493,7 @@ panelview <- function(data, # a data frame (long-form)
     if (ignore.treat == 0) {
 
         if (leave.gap == 0) {
-            if (!(class(data[, D]) %in% c("numeric", "integer"))) {
+            if (!inherits(data[, D], c("numeric", "integer"))) {
                     ## data[, Dname] <- as.numeric(as.character(data[, Dname]))
                     stop("Treatment indicator should be a numeric value.")
                 }
@@ -549,7 +549,7 @@ panelview <- function(data, # a data frame (long-form)
     }
 
     ## shade in the post-treatment period
-    if (!class(shade.post) %in% c("logical","numeric")) {
+    if (!inherits(shade.post, c("logical","numeric"))) {
         stop("Incorrect type for option \"shade.post\"")
     }
 
@@ -586,7 +586,7 @@ panelview <- function(data, # a data frame (long-form)
             if (length(show.id) > N ) {
                 stop("Length of \"show.id\" should not be larger than total number of units. \n")
             }
-            if (!class(show.id) %in% c("numeric", "integer")) {
+            if (!inherits(show.id, c("numeric", "integer"))) {
                 stop("\"show.id\" option misspecified. Try, for example, show.id = 1:100. \n")
             }
             if (sum(show.id > N) > 0) {
@@ -700,7 +700,7 @@ panelview <- function(data, # a data frame (long-form)
         }
 
         D.d <- as.data.frame(t(D.f))
-        suppressMessages(ff <- as.data.frame(summarise(group_by_all(D.d), COUNT = n())))
+        suppressMessages(ff <- as.data.frame(dplyr::summarise(dplyr::group_by(D.d, dplyr::across(dplyr::everything())), COUNT = dplyr::n())))
         
 
         D <- t(as.matrix(ff[, 1:TT]))
