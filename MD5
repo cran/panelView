@@ -1,8 +1,9 @@
-cb5c49fdbe834a2581faf18517458a37 *DESCRIPTION
+e4033684bf9d2bad58442b7e87cfeb35 *DESCRIPTION
 4c051c0d3d3983e041f5d112cd785b4b *LICENSE
-2eba964848fb300250816019cd384f0a *NAMESPACE
-81e680a91f926525ea407e47d9f57ff2 *R/panelView.R
+f24c0fc7369a1ea521c39d8269076ab6 *NAMESPACE
+1565d66c716dbfbecc50f890b848f412 *R/panelView.R
 87c91548dbf10cb6e6593d3fd5f138bb *R/plot-bivariate.R
+a0c9dc08d763c50f157de376d503147c *R/plot-network.R
 5f07fa97f398d3ea23feae6bf7c25c79 *R/plot-outcome.R
 34a21fd50298947027d6c7ccc4728e17 *R/plot-treat.R
 5d841459c61dd4d647d57d5147bc802e *R/zzz.r
@@ -10,8 +11,9 @@ cb5c49fdbe834a2581faf18517458a37 *DESCRIPTION
 3fd7af638bb9b994c923ecd2f2687a84 *inst/CITATION
 ba4455d1344c9222d183a283a2b74766 *man/capacity.Rd
 7febaf27645ea86726315ea2df13492a *man/panelView-package.Rd
-38fe32e52ea36f30e0797033846135fd *man/panelView.Rd
+3a3b02e61b88f043e006516017c002fc *man/panelView.Rd
 16b3daaa277261acb9ddc89d7391b579 *man/simdata.Rd
 7a55543f2ef49525a029bdd2b70ddd1d *man/turnout.Rd
 edacdd9a9c89f8732c3f0742dcae3152 *tests/testthat.R
+5294c52e49e05e7ea72740502ba4b440 *tests/testthat/test-graph.R
 15fda87d08921735f102e6490d9add96 *tests/testthat/test-panelview.R
